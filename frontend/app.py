@@ -2,12 +2,15 @@ import streamlit as st
 import requests
 import time
 import os
+import json
+from typing import Dict, Any
 
 # 페이지 설정
 st.set_page_config(
-    page_title="상품 검색 챗봇",
+    page_title="VibeCoding AI 챗봇",
     page_icon="🤖",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # 상수 설정
@@ -56,38 +59,145 @@ def display_response_with_stream(response: str):
     
     return response
 
-# 메인 앱 UI
-st.title("🤖 상품 검색 챗봇")
-st.markdown("안녕하세요! 찾고 계신 상품에 대해 질문해주세요.")
+def main():
+    """메인 애플리케이션"""
+    st.title("🤖 VibeCoding AI 챗봇")
+    st.markdown("---")
+    
+    # 사이드바 설정
+    with st.sidebar:
+        st.header("⚙️ 설정")
+        
+        # 새로운 기능: 응답 설정
+        temperature = st.slider(
+            "응답 창의성",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.7,
+            step=0.1,
+            help="높을수록 더 창의적인 응답을 생성합니다"
+        )
+        
+        max_length = st.selectbox(
+            "최대 응답 길이",
+            options=[500, 1000, 1500, 2000],
+            index=1,
+            help="응답의 최대 길이를 설정합니다"
+        )
+        
+        enable_search = st.checkbox(
+            "웹 검색 활성화",
+            value=True,
+            help="실시간 웹 검색을 통한 최신 정보 제공"
+        )
+        
+        st.markdown("---")
+        if st.button("🔄 대화 초기화"):
+            if "messages" in st.session_state:
+                st.session_state.messages = []
+                st.rerun()
+    
+    # 메인 채팅 영역
+    chat_container = st.container()
+    
+    # 세션 상태 초기화
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        # 환영 메시지
+        welcome_msg = """안녕하세요! 👋 
 
-# 세션 상태 초기화
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+저는 **VibeCoding AI 챗봇**입니다. 
+실시간 웹 검색을 통해 최신 정보를 제공하고, 다양한 질문에 답변드릴 수 있습니다.
 
-# 채팅 히스토리 표시
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+**새로운 기능:**
+- 🎯 응답 창의성 조절
+- 📏 응답 길이 설정  
+- 🔍 실시간 웹 검색
+- 💾 대화 기록 관리
 
-# 사용자 입력 처리
-if prompt := st.chat_input("상품에 대해 질문해주세요!"):
-    # 빈 메시지 체크
-    if not prompt.strip():
-        st.warning("메시지를 입력해주세요.")
-    else:
-        # 사용자 메시지 추가 및 표시
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        # 어시스턴트 응답 생성 및 표시
-        with st.chat_message("assistant"):
-            response = call_backend_api(prompt)
-            # 스트리밍 효과로 응답 표시
-            final_response = display_response_with_stream(response)
+궁금한 것이 있으시면 언제든 물어보세요!"""
+        
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": welcome_msg
+        })
+    
+    # 이전 대화 기록 표시
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+    
+    # 새 메시지 입력
+    if prompt := st.chat_input("메시지를 입력하세요..."):
+        # 사용자 메시지 추가
+        st.session_state.messages.append({
+            "role": "user", 
+            "content": prompt
+        })
+        
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(prompt)
             
-        # 어시스턴트 응답을 세션 상태에 저장
-        st.session_state.messages.append({"role": "assistant", "content": final_response})
+            # AI 응답 생성
+            with st.chat_message("assistant"):
+                with st.spinner("🤔 생각 중..."):
+                    response = get_ai_response(
+                        prompt, 
+                        temperature=temperature,
+                        max_length=max_length,
+                        enable_search=enable_search
+                    )
+                    st.markdown(response)
+                    
+                    # 응답을 세션에 저장
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": response
+                    })
+
+def get_ai_response(
+    message: str, 
+    temperature: float = 0.7,
+    max_length: int = 1000,
+    enable_search: bool = True
+) -> str:
+    """AI 응답 생성"""
+    try:
+        # 백엔드 API 호출
+        payload = {
+            "message": message,
+            "settings": {
+                "temperature": temperature,
+                "max_length": max_length,
+                "enable_search": enable_search
+            }
+        }
+        
+        # TODO: 실제 백엔드 API 연동
+        # response = requests.post("http://localhost:8000/chat", json=payload)
+        # if response.status_code == 200:
+        #     return response.json()["response"]
+        
+        # 임시 응답 (백엔드 연동 전)
+        return f"""**설정된 옵션으로 응답 생성 중...**
+
+📝 **질문:** {message}
+⚙️ **설정:**
+- 창의성: {temperature}
+- 최대 길이: {max_length}자
+- 웹 검색: {'활성화' if enable_search else '비활성화'}
+
+💡 실제 AI 응답은 백엔드 API가 연동되면 제공됩니다.
+현재는 개발 중인 기능입니다! 🚀"""
+        
+    except Exception as e:
+        st.error(f"❌ 오류가 발생했습니다: {str(e)}")
+        return "죄송합니다. 일시적인 오류가 발생했습니다. 다시 시도해 주세요."
+
+if __name__ == "__main__":
+    main()
 
 # 사이드바에 추가 정보
 with st.sidebar:
