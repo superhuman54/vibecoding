@@ -16,7 +16,7 @@ class Settings:
     
     # 서버 설정
     host: str = os.getenv("HOST", "0.0.0.0")
-    port: int = int(os.getenv("PORT", "8000"))
+    port: str = os.getenv("PORT", "8000")
     debug: bool = os.getenv("DEBUG", "False").lower() == "true"
     
     # 새로운 기능: 응답 설정
