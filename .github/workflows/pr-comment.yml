@@ -1,0 +1,139 @@
+name: 💬 PR 자동 댓글
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  pr-comment:
+    name: PR 댓글 작성
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: PR 환영 댓글 작성
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const prNumber = context.payload.pull_request.number;
+          const author = context.payload.pull_request.user.login;
+          
+          const comment = `## 🎉 PR 검토를 시작합니다!
+
+          안녕하세요 @${author}님! PR을 생성해 주셔서 감사합니다.
+          
+          ### 📋 PR 체크리스트
+          
+          리뷰어는 다음 사항들을 확인해 주세요:
+          
+          - [ ] **코드 품질**: 코드가 프로젝트 스타일 가이드를 따르는가?
+          - [ ] **테스트**: 모든 테스트가 통과하는가?
+          - [ ] **기능**: 변경사항이 의도한 대로 동작하는가?
+          - [ ] **문서**: 필요한 문서 업데이트가 포함되어 있는가?
+          - [ ] **성능**: 성능에 부정적인 영향이 없는가?
+          - [ ] **보안**: 보안 취약점은 없는가?
+          
+          ### 🤖 자동화된 검사
+          
+          - ✅ 자동 테스트가 실행됩니다
+          - ✅ 코드 품질 검사가 수행됩니다
+          - ✅ 보안 스캔이 진행됩니다
+          
+          ### 📌 추가 정보
+          
+          - 리뷰가 완료되면 \`status/ready-for-review\` 라벨이 추가됩니다
+          - 변경 요청이 있으면 \`status/needs-changes\` 라벨이 추가됩니다
+          - 승인 후 메인 브랜치로 스쿼시 머지됩니다
+          
+          질문이나 도움이 필요하시면 언제든 멘션해 주세요! 🚀`;
+          
+          await github.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body: comment
+          });
+
+  pr-size-comment:
+    name: PR 크기 분석
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 코드 체크아웃
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: PR 크기 분석 및 댓글
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const prNumber = context.payload.pull_request.number;
+          
+          // PR의 변경사항 분석
+          const files = await github.rest.pulls.listFiles({
+            owner,
+            repo,
+            pull_number: prNumber
+          });
+          
+          let additions = 0;
+          let deletions = 0;
+          let fileCount = files.data.length;
+          
+          files.data.forEach(file => {
+            additions += file.additions;
+            deletions += file.deletions;
+          });
+          
+          const totalChanges = additions + deletions;
+          
+          let sizeLabel = '';
+          let sizeComment = '';
+          
+          if (totalChanges <= 50) {
+            sizeLabel = 'size/XS';
+            sizeComment = '🟢 **매우 작은 PR**: 빠른 리뷰가 가능합니다!';
+          } else if (totalChanges <= 200) {
+            sizeLabel = 'size/S';
+            sizeComment = '🟡 **작은 PR**: 적절한 크기입니다.';
+          } else if (totalChanges <= 500) {
+            sizeLabel = 'size/M';
+            sizeComment = '🟠 **중간 크기 PR**: 꼼꼼한 리뷰가 필요합니다.';
+          } else if (totalChanges <= 1000) {
+            sizeLabel = 'size/L';
+            sizeComment = '🔴 **큰 PR**: 리뷰에 시간이 걸릴 수 있습니다.';
+          } else {
+            sizeLabel = 'size/XL';
+            sizeComment = '⚠️ **매우 큰 PR**: 작은 단위로 나누는 것을 고려해보세요.';
+          }
+          
+          // 크기 라벨 추가
+          await github.rest.issues.addLabels({
+            owner,
+            repo,
+            issue_number: prNumber,
+            labels: [sizeLabel]
+          });
+          
+          // 크기 분석 댓글 작성
+          const comment = `## 📊 PR 크기 분석
+
+          ${sizeComment}
+          
+          **변경 통계:**
+          - 📁 파일 수: ${fileCount}개
+          - ➕ 추가된 줄: ${additions}줄
+          - ➖ 삭제된 줄: ${deletions}줄
+          - 📏 총 변경: ${totalChanges}줄
+          
+          ---
+          _자동으로 분석된 결과입니다._`;
+          
+          await github.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body: comment
+          }); 

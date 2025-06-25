@@ -1,0 +1,332 @@
+name: 🏷️ 이슈 자동 라벨링
+
+on:
+  issues:
+    types: [opened, reopened, edited]
+
+jobs:
+  auto-label-issues:
+    name: 이슈 자동 라벨링
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 이슈 타입 기반 라벨링
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const issueNumber = context.payload.issue.number;
+          const title = context.payload.issue.title.toLowerCase();
+          const body = context.payload.issue.body || '';
+          const content = (title + ' ' + body).toLowerCase();
+          
+          const labelsToAdd = [];
+          
+          // 이슈 타입 라벨링
+          if (title.includes('[bug]') || content.includes('bug') || content.includes('error') || 
+              content.includes('crash') || content.includes('fail') || content.includes('broken')) {
+            labelsToAdd.push('type/bug');
+          } else if (title.includes('[feature]') || content.includes('feature') || 
+                     content.includes('enhancement') || content.includes('improve')) {
+            labelsToAdd.push('type/feature');
+          } else if (title.includes('[question]') || content.includes('question') || 
+                     content.includes('how to') || content.includes('help')) {
+            labelsToAdd.push('type/question');
+          } else if (title.includes('[docs]') || title.includes('[documentation]') || 
+                     content.includes('documentation') || content.includes('readme')) {
+            labelsToAdd.push('type/documentation');
+          } else if (content.includes('enhance') || content.includes('improvement') || 
+                     content.includes('optimize')) {
+            labelsToAdd.push('type/enhancement');
+          }
+          
+          // 우선순위 라벨링
+          if (content.includes('critical') || content.includes('urgent') || 
+              content.includes('crash') || content.includes('security') || 
+              content.includes('data loss')) {
+            labelsToAdd.push('priority/critical');
+          } else if (content.includes('important') || content.includes('high') || 
+                     content.includes('bug') || content.includes('error')) {
+            labelsToAdd.push('priority/high');
+          } else if (content.includes('feature') || content.includes('enhancement')) {
+            labelsToAdd.push('priority/medium');
+          } else {
+            labelsToAdd.push('priority/low');
+          }
+          
+          // 상태 라벨링
+          if (content.includes('wip') || content.includes('work in progress') || 
+              content.includes('in progress')) {
+            labelsToAdd.push('status/in-progress');
+          } else if (content.includes('blocked') || content.includes('waiting') || 
+                     content.includes('dependency')) {
+            labelsToAdd.push('status/blocked');
+          } else {
+            labelsToAdd.push('status/triage');
+          }
+          
+          // 라벨 추가
+          if (labelsToAdd.length > 0) {
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              labels: labelsToAdd
+            });
+            
+            console.log(`✅ 추가된 라벨: ${labelsToAdd.join(', ')}`);
+          }
+
+  area-based-labeling:
+    name: 영역 기반 라벨링
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 기술 영역별 라벨링
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const issueNumber = context.payload.issue.number;
+          const title = context.payload.issue.title.toLowerCase();
+          const body = context.payload.issue.body || '';
+          const content = (title + ' ' + body).toLowerCase();
+          
+          const areaLabels = [];
+          
+          // 백엔드 관련
+          if (content.includes('backend') || content.includes('api') || 
+              content.includes('fastapi') || content.includes('server') || 
+              content.includes('database') || content.includes('orm')) {
+            areaLabels.push('area/backend');
+          }
+          
+          // 프론트엔드 관련
+          if (content.includes('frontend') || content.includes('ui') || 
+              content.includes('streamlit') || content.includes('interface') || 
+              content.includes('web') || content.includes('css')) {
+            areaLabels.push('area/frontend');
+          }
+          
+          // AI/Agent 관련
+          if (content.includes('agent') || content.includes('ai') || 
+              content.includes('llm') || content.includes('langgraph') || 
+              content.includes('gemini') || content.includes('langsmith')) {
+            areaLabels.push('area/agent');
+          }
+          
+          // 문서 관련
+          if (content.includes('docs') || content.includes('documentation') || 
+              content.includes('readme') || content.includes('guide') || 
+              content.includes('tutorial')) {
+            areaLabels.push('area/documentation');
+          }
+          
+          // 테스트 관련
+          if (content.includes('test') || content.includes('testing') || 
+              content.includes('pytest') || content.includes('unit test') || 
+              content.includes('integration')) {
+            areaLabels.push('area/testing');
+          }
+          
+          // 인프라/배포 관련
+          if (content.includes('docker') || content.includes('deploy') || 
+              content.includes('ci/cd') || content.includes('github actions') || 
+              content.includes('devops')) {
+            areaLabels.push('area/ci-cd');
+          }
+          
+          // 보안 관련
+          if (content.includes('security') || content.includes('auth') || 
+              content.includes('authentication') || content.includes('vulnerability') || 
+              content.includes('permission')) {
+            areaLabels.push('area/security');
+          }
+          
+          // 성능 관련
+          if (content.includes('performance') || content.includes('slow') || 
+              content.includes('optimization') || content.includes('memory') || 
+              content.includes('speed')) {
+            areaLabels.push('area/performance');
+          }
+          
+          // 의존성 관련
+          if (content.includes('dependency') || content.includes('package') || 
+              content.includes('requirements') || content.includes('library') || 
+              content.includes('version')) {
+            areaLabels.push('dependencies');
+          }
+          
+          // 영역 라벨 추가
+          if (areaLabels.length > 0) {
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              labels: areaLabels
+            });
+            
+            console.log(`✅ 영역 라벨 추가: ${areaLabels.join(', ')}`);
+          }
+
+  special-labels:
+    name: 특수 상황 라벨링
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 특수 상황 감지 및 라벨링
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const issueNumber = context.payload.issue.number;
+          const title = context.payload.issue.title.toLowerCase();
+          const body = context.payload.issue.body || '';
+          const content = (title + ' ' + body).toLowerCase();
+          const author = context.payload.issue.user.login;
+          
+          const specialLabels = [];
+          
+          // 첫 기여자 확인
+          const issues = await github.rest.issues.listForRepo({
+            owner,
+            repo,
+            creator: author,
+            state: 'all',
+            per_page: 100
+          });
+          
+          const userIssues = issues.data.filter(issue => 
+            issue.user.login === author && issue.number !== issueNumber
+          );
+          
+          if (userIssues.length === 0) {
+            specialLabels.push('good first issue', 'first-time-contributor');
+          }
+          
+          // 중복 이슈 가능성 체크
+          const allIssues = await github.rest.issues.listForRepo({
+            owner,
+            repo,
+            state: 'open',
+            per_page: 50
+          });
+          
+          const similarIssues = allIssues.data.filter(issue => {
+            if (issue.number === issueNumber) return false;
+            const issueTitle = issue.title.toLowerCase();
+            const titleWords = title.split(' ').filter(word => word.length > 3);
+            return titleWords.some(word => issueTitle.includes(word));
+          });
+          
+          if (similarIssues.length > 0) {
+            specialLabels.push('possible-duplicate');
+          }
+          
+          // 긴급 상황 감지
+          if (content.includes('urgent') || content.includes('critical') || 
+              content.includes('asap') || content.includes('immediately')) {
+            specialLabels.push('urgent');
+          }
+          
+          // 기능 요청 크기 추정
+          if (content.includes('feature') || content.includes('enhancement')) {
+            const featureSize = estimateFeatureSize(content);
+            specialLabels.push(`size/${featureSize}`);
+          }
+          
+          // Breaking Change 감지
+          if (content.includes('breaking change') || content.includes('breaking') || 
+              content.includes('backward compatibility')) {
+            specialLabels.push('breaking-change');
+          }
+          
+          // Help Wanted 라벨
+          if (content.includes('help wanted') || content.includes('help needed') || 
+              content.includes('assistance') || userIssues.length === 0) {
+            specialLabels.push('help wanted');
+          }
+          
+          // 특수 라벨 추가
+          if (specialLabels.length > 0) {
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              labels: specialLabels
+            });
+            
+            console.log(`✅ 특수 라벨 추가: ${specialLabels.join(', ')}`);
+            
+            // 중복 이슈 감지 시 댓글 추가
+            if (specialLabels.includes('possible-duplicate')) {
+              const duplicateComment = `## 🔍 중복 이슈 가능성 감지
+
+              유사한 제목의 이슈들이 발견되었습니다:
+              ${similarIssues.slice(0, 3).map(issue => 
+                `- [#${issue.number}](${issue.html_url}) ${issue.title}`
+              ).join('\n')}
+              
+              **확인 사항:**
+              - 위 이슈들과 동일한 문제인지 확인해 주세요
+              - 다른 문제라면 차이점을 명확히 설명해 주세요
+              - 동일한 문제라면 기존 이슈에 댓글을 추가해 주세요
+              
+              ---
+              _자동으로 감지된 중복 가능성입니다._`;
+              
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body: duplicateComment
+              });
+            }
+            
+            // 첫 기여자 특별 안내
+            if (specialLabels.includes('first-time-contributor')) {
+              const firstContributorComment = `## 🌟 첫 기여자 환영 가이드
+
+              첫 번째 이슈를 제출해 주셔서 감사합니다! 다음 가이드를 참고해 주세요:
+              
+              ### 📚 유용한 리소스
+              - [기여 가이드](./.cursor/rules/github-management.mdc)
+              - [프로젝트 구조](./README.md)
+              - [개발 환경 설정 가이드](./backend/README.md)
+              
+              ### 🤝 도움 받기
+              - 질문이 있으시면 언제든 댓글로 문의하세요
+              - \`@${owner}\` 멘션으로 직접 도움을 요청할 수 있습니다
+              - 단계별 가이드가 필요하시면 알려주세요
+              
+              **함께 멋진 프로젝트를 만들어 가요!** ✨
+              
+              ---
+              _첫 기여자를 위한 특별 가이드입니다._`;
+              
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body: firstContributorComment
+              });
+            }
+          }
+          
+          // 기능 크기 추정 함수
+          function estimateFeatureSize(content) {
+            const keywords = {
+              'XS': ['typo', 'text', 'color', 'style'],
+              'S': ['button', 'link', 'simple', 'minor'],
+              'M': ['form', 'page', 'component', 'feature'],
+              'L': ['integration', 'complex', 'system', 'architecture'],
+              'XL': ['redesign', 'migration', 'major', 'framework']
+            };
+            
+            for (const [size, words] of Object.entries(keywords)) {
+              if (words.some(word => content.includes(word))) {
+                return size;
+              }
+            }
+            return 'M'; // 기본값
+          } 

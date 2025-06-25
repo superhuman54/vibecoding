@@ -1,0 +1,91 @@
+name: 🧪 테스트 실행
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-backend:
+    name: 백엔드 테스트
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 코드 체크아웃
+      uses: actions/checkout@v4
+      
+    - name: Python 3.11 설정
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: 의존성 캐시
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: 백엔드 의존성 설치
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-asyncio
+        
+    - name: 백엔드 테스트 실행
+      run: |
+        cd backend
+        python -m pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
+        
+    - name: 테스트 커버리지 업로드
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./backend/coverage.xml
+        flags: backend
+        name: backend-coverage
+
+  test-frontend:
+    name: 프론트엔드 테스트
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 코드 체크아웃
+      uses: actions/checkout@v4
+      
+    - name: Python 3.11 설정
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: 프론트엔드 의존성 설치
+      run: |
+        cd frontend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: 프론트엔드 Streamlit 앱 검증
+      run: |
+        cd frontend
+        python -c "import streamlit; import app; print('Frontend validation passed')"
+
+  test-results:
+    name: 테스트 결과 종합
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    if: always()
+    
+    steps:
+    - name: 테스트 결과 확인
+      run: |
+        if [[ "${{ needs.test-backend.result }}" == "success" && "${{ needs.test-frontend.result }}" == "success" ]]; then
+          echo "✅ 모든 테스트가 성공했습니다!"
+          exit 0
+        else
+          echo "❌ 일부 테스트가 실패했습니다."
+          echo "백엔드 테스트: ${{ needs.test-backend.result }}"
+          echo "프론트엔드 테스트: ${{ needs.test-frontend.result }}"
+          exit 1
+        fi 

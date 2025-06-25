@@ -1,0 +1,148 @@
+name: 👤 PR 자동 할당
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  assign-pr:
+    name: PR 자동 할당
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 코드 체크아웃
+      uses: actions/checkout@v4
+      
+    - name: PR 자동 할당
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const prNumber = context.payload.pull_request.number;
+          const author = context.payload.pull_request.user.login;
+          
+          // 기본 할당자 설정 (저장소 소유자 또는 메인 메인테이너)
+          const defaultAssignees = [owner];
+          
+          // PR의 변경된 파일들 가져오기
+          const files = await github.rest.pulls.listFiles({
+            owner,
+            repo,
+            pull_number: prNumber
+          });
+          
+          // 파일 경로별 담당자 매핑
+          const codeOwners = {
+            'backend/': ['backend-team', owner],
+            'frontend/': ['frontend-team', owner],
+            'docs/': ['docs-team', owner],
+            '.github/': ['devops-team', owner],
+            'tests/': ['qa-team', owner]
+          };
+          
+          let assignees = new Set(defaultAssignees);
+          
+          // 변경된 파일 경로를 기반으로 담당자 결정
+          files.data.forEach(file => {
+            const filePath = file.filename;
+            
+            for (const [path, owners] of Object.entries(codeOwners)) {
+              if (filePath.startsWith(path)) {
+                owners.forEach(owner => assignees.add(owner));
+              }
+            }
+          });
+          
+          // 작성자는 할당자에서 제외
+          assignees.delete(author);
+          
+          const finalAssignees = Array.from(assignees).slice(0, 3); // 최대 3명까지 할당
+          
+          if (finalAssignees.length > 0) {
+            try {
+              await github.rest.issues.addAssignees({
+                owner,
+                repo,
+                issue_number: prNumber,
+                assignees: finalAssignees
+              });
+              
+              console.log(`✅ PR #${prNumber}에 할당자 추가 완료: ${finalAssignees.join(', ')}`);
+              
+              // 할당 완료 댓글 작성
+              const comment = `## 👥 담당자 자동 할당 완료
+
+              다음 담당자들이 이 PR을 검토할 예정입니다:
+              ${finalAssignees.map(assignee => `- @${assignee}`).join('\n')}
+              
+              **할당 근거:**
+              - 기본 메인테이너: @${owner}
+              ${files.data.map(file => {
+                for (const [path, owners] of Object.entries(codeOwners)) {
+                  if (file.filename.startsWith(path)) {
+                    return `- \`${file.filename}\`: ${path} 영역 담당자`;
+                  }
+                }
+                return null;
+              }).filter(Boolean).slice(0, 3).join('\n')}
+              
+              ---
+              _자동으로 할당된 담당자입니다. 필요시 수동으로 변경 가능합니다._`;
+              
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: comment
+              });
+              
+            } catch (error) {
+              console.log(`⚠️ 일부 사용자를 할당할 수 없습니다: ${error.message}`);
+              
+              // 오류 발생 시 기본 할당자만 할당 시도
+              try {
+                await github.rest.issues.addAssignees({
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  assignees: [owner]
+                });
+              } catch (fallbackError) {
+                console.log(`❌ 기본 할당자 할당 실패: ${fallbackError.message}`);
+              }
+            }
+          }
+
+  assign-reviewers:
+    name: 리뷰어 자동 할당
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 리뷰어 자동 할당
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const prNumber = context.payload.pull_request.number;
+          const author = context.payload.pull_request.user.login;
+          
+          // 가능한 리뷰어 목록 (저장소에 맞게 수정 필요)
+          const possibleReviewers = [owner];
+          
+          // 작성자 제외
+          const reviewers = possibleReviewers.filter(reviewer => reviewer !== author);
+          
+          if (reviewers.length > 0) {
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner,
+                repo,
+                pull_number: prNumber,
+                reviewers: reviewers.slice(0, 2) // 최대 2명의 리뷰어
+              });
+              
+              console.log(`✅ PR #${prNumber}에 리뷰어 요청 완료: ${reviewers.join(', ')}`);
+            } catch (error) {
+              console.log(`⚠️ 리뷰어 요청 실패: ${error.message}`);
+            }
+          } 

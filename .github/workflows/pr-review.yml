@@ -1,0 +1,201 @@
+name: 🔍 PR 자동 코드 리뷰
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  automated-review:
+    name: 자동 코드 리뷰
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 코드 체크아웃
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Python 3.11 설정
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: 코드 분석 도구 설치
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort mypy bandit safety
+        
+    - name: 코드 스타일 검사 (Black)
+      id: black-check
+      run: |
+        echo "🎨 Black 코드 포맷팅 검사 중..."
+        black_output=$(black --check --diff . 2>&1 || true)
+        echo "black_result<<EOF" >> $GITHUB_OUTPUT
+        echo "$black_output" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: Import 정렬 검사 (isort)
+      id: isort-check
+      run: |
+        echo "📦 Import 정렬 검사 중..."
+        isort_output=$(isort --check-only --diff . 2>&1 || true)
+        echo "isort_result<<EOF" >> $GITHUB_OUTPUT
+        echo "$isort_output" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: 코드 품질 검사 (Flake8)
+      id: flake8-check
+      run: |
+        echo "🔍 Flake8 코드 품질 검사 중..."
+        flake8_output=$(flake8 --max-line-length=88 --extend-ignore=E203,W503 . 2>&1 || true)
+        echo "flake8_result<<EOF" >> $GITHUB_OUTPUT
+        echo "$flake8_output" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: 타입 검사 (MyPy)
+      id: mypy-check
+      run: |
+        echo "🏷️ MyPy 타입 검사 중..."
+        mypy_output=$(mypy --ignore-missing-imports . 2>&1 || true)
+        echo "mypy_result<<EOF" >> $GITHUB_OUTPUT
+        echo "$mypy_output" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: 보안 검사 (Bandit)
+      id: bandit-check
+      run: |
+        echo "🔒 Bandit 보안 검사 중..."
+        bandit_output=$(bandit -r . -f json 2>&1 || true)
+        echo "bandit_result<<EOF" >> $GITHUB_OUTPUT
+        echo "$bandit_output" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: 의존성 보안 검사 (Safety)
+      id: safety-check
+      run: |
+        echo "🛡️ Safety 의존성 보안 검사 중..."
+        cd backend
+        safety_output=$(safety check --json 2>&1 || true)
+        echo "safety_result<<EOF" >> $GITHUB_OUTPUT
+        echo "$safety_output" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: 코드 리뷰 댓글 작성
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const prNumber = context.payload.pull_request.number;
+          
+          const blackResult = `${{ steps.black-check.outputs.black_result }}`;
+          const isortResult = `${{ steps.isort-check.outputs.isort_result }}`;
+          const flake8Result = `${{ steps.flake8-check.outputs.flake8_result }}`;
+          const mypyResult = `${{ steps.mypy-check.outputs.mypy_result }}`;
+          const banditResult = `${{ steps.bandit-check.outputs.bandit_result }}`;
+          const safetyResult = `${{ steps.safety-check.outputs.safety_result }}`;
+          
+          let reviewComment = `## 🤖 자동 코드 리뷰 결과\n\n`;
+          let hasIssues = false;
+          
+          // Black 결과 분석
+          if (blackResult && blackResult.includes('would reformat')) {
+            hasIssues = true;
+            reviewComment += `### 🎨 코드 포맷팅 (Black)\n`;
+            reviewComment += `❌ **수정 필요**: 일부 파일의 포맷팅이 표준과 다릅니다.\n`;
+            reviewComment += `\`\`\`\n${blackResult.substring(0, 1000)}\`\`\`\n\n`;
+          } else {
+            reviewComment += `### 🎨 코드 포맷팅 (Black)\n✅ **통과**: 모든 파일이 올바르게 포맷팅되었습니다.\n\n`;
+          }
+          
+          // isort 결과 분석
+          if (isortResult && isortResult.includes('ERROR')) {
+            hasIssues = true;
+            reviewComment += `### 📦 Import 정렬 (isort)\n`;
+            reviewComment += `❌ **수정 필요**: Import 문의 정렬이 표준과 다릅니다.\n`;
+            reviewComment += `\`\`\`\n${isortResult.substring(0, 1000)}\`\`\`\n\n`;
+          } else {
+            reviewComment += `### 📦 Import 정렬 (isort)\n✅ **통과**: Import 문이 올바르게 정렬되었습니다.\n\n`;
+          }
+          
+          // Flake8 결과 분석
+          if (flake8Result && flake8Result.trim() && !flake8Result.includes('no issues found')) {
+            hasIssues = true;
+            reviewComment += `### 🔍 코드 품질 (Flake8)\n`;
+            reviewComment += `❌ **수정 필요**: 코드 품질 이슈가 발견되었습니다.\n`;
+            reviewComment += `\`\`\`\n${flake8Result.substring(0, 1000)}\`\`\`\n\n`;
+          } else {
+            reviewComment += `### 🔍 코드 품질 (Flake8)\n✅ **통과**: 코드 품질 이슈가 발견되지 않았습니다.\n\n`;
+          }
+          
+          // MyPy 결과 분석
+          if (mypyResult && mypyResult.includes('error')) {
+            reviewComment += `### 🏷️ 타입 검사 (MyPy)\n`;
+            reviewComment += `⚠️ **주의**: 타입 관련 이슈가 발견되었습니다.\n`;
+            reviewComment += `\`\`\`\n${mypyResult.substring(0, 1000)}\`\`\`\n\n`;
+          } else {
+            reviewComment += `### 🏷️ 타입 검사 (MyPy)\n✅ **통과**: 타입 관련 이슈가 발견되지 않았습니다.\n\n`;
+          }
+          
+          // Bandit 결과 분석
+          try {
+            const banditJson = JSON.parse(banditResult);
+            if (banditJson.results && banditJson.results.length > 0) {
+              hasIssues = true;
+              reviewComment += `### 🔒 보안 검사 (Bandit)\n`;
+              reviewComment += `❌ **보안 이슈 발견**: ${banditJson.results.length}개의 잠재적 보안 문제가 발견되었습니다.\n`;
+              banditJson.results.slice(0, 3).forEach((issue, index) => {
+                reviewComment += `${index + 1}. **${issue.test_name}** (${issue.severity}): ${issue.filename}:${issue.line_number}\n`;
+              });
+              reviewComment += `\n`;
+            } else {
+              reviewComment += `### 🔒 보안 검사 (Bandit)\n✅ **통과**: 보안 이슈가 발견되지 않았습니다.\n\n`;
+            }
+          } catch (e) {
+            reviewComment += `### 🔒 보안 검사 (Bandit)\n⚠️ **검사 실패**: 보안 검사를 완료할 수 없습니다.\n\n`;
+          }
+          
+          // Safety 결과 분석
+          try {
+            const safetyJson = JSON.parse(safetyResult);
+            if (safetyJson && safetyJson.length > 0) {
+              hasIssues = true;
+              reviewComment += `### 🛡️ 의존성 보안 (Safety)\n`;
+              reviewComment += `❌ **취약점 발견**: ${safetyJson.length}개의 의존성 보안 취약점이 발견되었습니다.\n`;
+              safetyJson.slice(0, 3).forEach((vuln, index) => {
+                reviewComment += `${index + 1}. **${vuln.package_name}** ${vuln.installed_version}: ${vuln.advisory}\n`;
+              });
+              reviewComment += `\n`;
+            } else {
+              reviewComment += `### 🛡️ 의존성 보안 (Safety)\n✅ **통과**: 의존성 보안 취약점이 발견되지 않았습니다.\n\n`;
+            }
+          } catch (e) {
+            reviewComment += `### 🛡️ 의존성 보안 (Safety)\n✅ **통과**: 의존성 보안 취약점이 발견되지 않았습니다.\n\n`;
+          }
+          
+          // 종합 결과
+          if (hasIssues) {
+            reviewComment += `## 📋 종합 결과\n\n`;
+            reviewComment += `❌ **수정이 필요한 이슈들이 발견되었습니다.** 위의 권장사항을 참고하여 코드를 개선해 주세요.\n\n`;
+            reviewComment += `### 🛠️ 수정 방법\n`;
+            reviewComment += `\`\`\`bash\n`;
+            reviewComment += `# 코드 포맷팅 자동 수정\n`;
+            reviewComment += `black .\n`;
+            reviewComment += `isort .\n\n`;
+            reviewComment += `# 코드 품질 검사\n`;
+            reviewComment += `flake8 .\n\n`;
+            reviewComment += `# 보안 검사\n`;
+            reviewComment += `bandit -r .\n`;
+            reviewComment += `\`\`\`\n`;
+          } else {
+            reviewComment += `## 🎉 종합 결과\n\n`;
+            reviewComment += `✅ **훌륭합니다!** 모든 자동 검사를 통과했습니다. 코드가 프로젝트 표준을 준수하고 있습니다.\n\n`;
+          }
+          
+          reviewComment += `---\n_자동으로 생성된 코드 리뷰입니다. 추가 질문이나 도움이 필요하시면 언제든 문의해 주세요!_`;
+          
+          await github.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body: reviewComment
+          }); 

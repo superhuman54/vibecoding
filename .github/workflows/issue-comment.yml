@@ -1,0 +1,260 @@
+name: 💬 이슈 자동 댓글
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  welcome-comment:
+    name: 이슈 환영 댓글
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 이슈 환영 댓글 작성
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const issueNumber = context.payload.issue.number;
+          const author = context.payload.issue.user.login;
+          const title = context.payload.issue.title;
+          const body = context.payload.issue.body || '';
+          
+          // 이슈 타입 분석
+          let issueType = '일반';
+          if (title.toLowerCase().includes('[bug]') || title.toLowerCase().includes('bug')) {
+            issueType = '버그 리포트';
+          } else if (title.toLowerCase().includes('[feature]') || title.toLowerCase().includes('feature')) {
+            issueType = '기능 요청';
+          } else if (title.toLowerCase().includes('[question]') || title.toLowerCase().includes('question')) {
+            issueType = '질문';
+          } else if (title.toLowerCase().includes('[enhancement]') || title.toLowerCase().includes('enhancement')) {
+            issueType = '개선 제안';
+          }
+          
+          const comment = `## 👋 이슈를 등록해 주셔서 감사합니다!
+
+          안녕하세요 @${author}님! **${issueType}** 이슈를 제출해 주셔서 감사합니다.
+          
+          ### 📋 처리 절차
+          
+          1. **트리아지** (1-2일): 이슈 분류 및 우선순위 설정
+          2. **분석** (2-3일): 기술적 검토 및 구현 방안 논의  
+          3. **할당** (1일): 적절한 담당자에게 할당
+          4. **개발** (일정에 따라): 실제 개발 작업 진행
+          5. **검토 및 배포**: 코드 리뷰 후 배포
+          
+          ### 🔄 상태 관리
+          
+          이슈는 다음과 같은 라벨로 상태가 관리됩니다:
+          - \`status/triage\`: 검토 대기 중
+          - \`status/in-progress\`: 작업 진행 중  
+          - \`status/blocked\`: 진행 차단됨
+          - \`status/ready\`: 작업 준비 완료
+          
+          ### 📞 소통 방법
+          
+          - **질문이나 추가 정보가 필요하시면** 언제든 댓글로 알려주세요
+          - **긴급한 문제라면** \`priority/critical\` 또는 \`priority/high\` 라벨이 자동으로 적용됩니다
+          - **진행 상황이 궁금하시면** 담당자를 멘션해 주세요
+          
+          ### 🤖 자동화 안내
+          
+          - ✅ 이슈 타입과 우선순위가 자동으로 분석됩니다
+          - ✅ 적절한 담당자가 자동으로 할당됩니다  
+          - ✅ 관련 라벨이 자동으로 추가됩니다
+          - ✅ 진행 상황이 자동으로 업데이트됩니다
+          
+          **빠른 해결을 위해 최선을 다하겠습니다!** 🚀
+          
+          ---
+          _자동으로 생성된 환영 메시지입니다._`;
+          
+          await github.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: issueNumber,
+            body: comment
+          });
+
+  issue-template-check:
+    name: 이슈 템플릿 확인
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 이슈 내용 분석
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const issueNumber = context.payload.issue.number;
+          const title = context.payload.issue.title;
+          const body = context.payload.issue.body || '';
+          
+          let suggestions = [];
+          let needsMoreInfo = false;
+          
+          // 버그 리포트 체크
+          if (title.toLowerCase().includes('bug') || title.toLowerCase().includes('[bug]')) {
+            const bugRequiredFields = [
+              { field: '재현 단계', keywords: ['재현', 'reproduce', 'steps', 'step'] },
+              { field: '예상 결과', keywords: ['예상', 'expected', 'should'] },
+              { field: '실제 결과', keywords: ['실제', 'actual', 'but', 'however'] },
+              { field: '환경 정보', keywords: ['환경', 'environment', 'version', 'os'] }
+            ];
+            
+            bugRequiredFields.forEach(({ field, keywords }) => {
+              const hasField = keywords.some(keyword => 
+                body.toLowerCase().includes(keyword)
+              );
+              if (!hasField) {
+                suggestions.push(`**${field}** 정보를 추가해 주세요`);
+                needsMoreInfo = true;
+              }
+            });
+          }
+          
+          // 기능 요청 체크
+          if (title.toLowerCase().includes('feature') || title.toLowerCase().includes('[feature]')) {
+            const featureRequiredFields = [
+              { field: '기능 설명', keywords: ['기능', 'feature', 'functionality'] },
+              { field: '사용 사례', keywords: ['사용', 'use case', 'scenario', '시나리오'] },
+              { field: '기대 효과', keywords: ['효과', 'benefit', 'impact', '개선'] }
+            ];
+            
+            featureRequiredFields.forEach(({ field, keywords }) => {
+              const hasField = keywords.some(keyword => 
+                body.toLowerCase().includes(keyword)
+              );
+              if (!hasField) {
+                suggestions.push(`**${field}** 정보를 추가해 주세요`);
+                needsMoreInfo = true;
+              }
+            });
+          }
+          
+          // 제목이 너무 짧은 경우
+          if (title.length < 10) {
+            suggestions.push('**제목을 더 구체적으로** 작성해 주세요 (최소 10자 이상)');
+            needsMoreInfo = true;
+          }
+          
+          // 내용이 너무 짧은 경우
+          if (body.length < 50) {
+            suggestions.push('**상세한 설명**을 추가해 주세요 (최소 50자 이상)');
+            needsMoreInfo = true;
+          }
+          
+          if (needsMoreInfo && suggestions.length > 0) {
+            const comment = `## 📝 이슈 작성 가이드
+
+            더 빠르고 정확한 처리를 위해 다음 정보를 추가해 주시기 바랍니다:
+            
+            ${suggestions.map((suggestion, index) => `${index + 1}. ${suggestion}`).join('\n')}
+            
+            ### 💡 작성 팁
+            
+            **버그 리포트의 경우:**
+            - 문제가 발생하는 구체적인 단계
+            - 스크린샷이나 에러 메시지 (있다면)
+            - 브라우저, OS, 버전 등 환경 정보
+            
+            **기능 요청의 경우:**
+            - 어떤 문제를 해결하려는지
+            - 구체적인 사용 시나리오
+            - 유사한 기능이 있는 다른 서비스 참고 사항
+            
+            **질문의 경우:**
+            - 시도해 본 해결 방법들
+            - 관련 코드나 설정 정보
+            - 기대하는 결과
+            
+            추가 정보를 제공해 주시면 더 신속하게 도움을 드릴 수 있습니다! 🙏
+            
+            ---
+            _자동으로 생성된 가이드입니다._`;
+            
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              body: comment
+            });
+          }
+
+  thank-you-comment:
+    name: 감사 메시지
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened'
+    
+    steps:
+    - name: 첫 기여자 확인 및 감사 메시지
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const issueNumber = context.payload.issue.number;
+          const author = context.payload.issue.user.login;
+          
+          // 사용자의 이전 이슈 확인
+          const issues = await github.rest.issues.listForRepo({
+            owner,
+            repo,
+            creator: author,
+            state: 'all',
+            per_page: 100
+          });
+          
+          const userIssues = issues.data.filter(issue => 
+            issue.user.login === author && issue.number !== issueNumber
+          );
+          
+          if (userIssues.length === 0) {
+            // 첫 기여자인 경우
+            const welcomeComment = `## 🎉 첫 번째 이슈를 환영합니다!
+
+            @${author}님, 저희 프로젝트에 첫 번째 이슈를 제출해 주셔서 정말 감사합니다! 
+            
+            ### 🌟 첫 기여자 특별 안내
+            
+            - **우선 처리**: 첫 기여자의 이슈는 우선적으로 검토됩니다
+            - **멘토링**: 필요시 상세한 가이드와 도움을 제공합니다
+            - **커뮤니티**: 언제든 질문하고 의견을 나누어 주세요
+            
+            ### 📚 유용한 리소스
+            
+            - 📖 [프로젝트 문서](./README.md)
+            - 🤝 [기여 가이드](./.cursor/rules/github-management.mdc)
+            - 💬 이슈나 PR에서 언제든 질문해 주세요
+            
+            **함께 멋진 프로젝트를 만들어 가요!** ✨
+            
+            ---
+            _첫 기여자를 위한 특별 메시지입니다._`;
+            
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              body: welcomeComment
+            });
+          } else {
+            // 기존 기여자인 경우
+            const returnComment = `## 🙌 다시 만나서 반갑습니다!
+
+            @${author}님, 또 다른 소중한 이슈를 제출해 주셔서 감사합니다! 
+            
+            **이전 기여:** ${userIssues.length}개의 이슈를 제출해 주셨네요. 
+            
+            항상 프로젝트 개선에 관심을 가져주셔서 정말 감사합니다! 🎯
+            
+            ---
+            _기존 기여자를 위한 감사 메시지입니다._`;
+            
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              body: returnComment
+            });
+          } 
